@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Painel do DJ 🎧</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0d0d0f;
+      --surface: #18181c;
+      --surface2: #111116;
+      --border: #2a2a32;
+      --text: #e8e8e8;
+      --muted: #777;
+      --accent: #6c63ff;
+      --green: #4ade80;
+      --red: #f87171;
+      --yellow: #fbbf24;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      min-height: 100dvh;
+      padding: 1.5rem 1rem 4rem;
+    }
+
+    header {
+      max-width: 1100px;
+      margin: 0 auto 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: .75rem;
+    }
+    header h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -.01em; }
+    .status-bar { display: flex; align-items: center; gap: .9rem; font-size: .82rem; color: var(--muted); }
+    .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--green); display: inline-block; margin-right: .35rem; }
+    .dot.off { background: var(--red); }
+
+    .grid {
+      max-width: 1100px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+    }
+    @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+
+    .col h2 {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: .9rem;
+      padding-bottom: .5rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .count {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: .05rem .55rem;
+      font-size: .78rem;
+      color: var(--muted);
+      margin-left: .4rem;
+    }
+
+    .empty { color: var(--muted); font-size: .88rem; padding: 1.2rem .2rem; }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: .8rem;
+      padding: .9rem 1rem;
+      margin-bottom: .8rem;
+    }
+    .card .title { font-size: .95rem; font-weight: 500; word-break: break-word; line-height: 1.4; }
+    .card .meta { color: var(--muted); font-size: .76rem; margin-top: .35rem; }
+    .card .path {
+      color: #6b7280; font-size: .72rem; margin-top: .35rem;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace; word-break: break-all;
+    }
+
+    .badge {
+      display: inline-block; font-size: .72rem; font-weight: 600;
+      padding: .12rem .5rem; border-radius: 999px; margin-right: .4rem;
+    }
+    .badge.approved    { background: #2a2440; color: #b9aaff; }
+    .badge.downloading { background: #2a2440; color: #b9aaff; }
+    .badge.ready       { background: #0a2e18; color: var(--green); }
+    .badge.failed      { background: #2d0a0a; color: var(--red); }
+
+    .err {
+      background: #2d0a0a; color: var(--red); border: 1px solid #6b1414;
+      border-radius: .5rem; padding: .5rem .7rem; font-size: .8rem; margin-top: .6rem; line-height: 1.4;
+    }
+
+    .actions { display: flex; gap: .5rem; margin-top: .8rem; }
+    button {
+      flex: 1; cursor: pointer; border: none; border-radius: .55rem;
+      font-size: .85rem; font-weight: 600; padding: .55rem .6rem;
+      transition: filter .15s, opacity .15s; color: #fff;
+    }
+    button:hover:not(:disabled) { filter: brightness(1.12); }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    .btn-approve { background: var(--accent); }
+    .btn-reject  { background: #3a2326; color: #f3b0b0; }
+    .btn-played  { background: #1f6f43; }
+    .btn-retry   { background: var(--accent); }
+    .btn-ghost   { background: #26262e; color: #c8c8d0; }
+
+    .spin {
+      display: inline-block; width: 11px; height: 11px; margin-right: .3rem;
+      border: 2px solid rgba(185,170,255,.35); border-top-color: #b9aaff;
+      border-radius: 50%; animation: spin .8s linear infinite; vertical-align: -1px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🎧 Painel do DJ</h1>
+    <div class="status-bar">
+      <span><span id="dot" class="dot"></span><span id="conn">conectado</span></span>
+      <label style="cursor:pointer;">
+        <input type="checkbox" id="auto" checked style="vertical-align:-1px;" />
+        auto-atualizar
+      </label>
+    </div>
+  </header>
+
+  <div class="grid">
+    <section class="col">
+      <h2>⏳ Pendentes <span id="count-pending" class="count">0</span></h2>
+      <div id="pending"></div>
+    </section>
+    <section class="col">
+      <h2>✅ Aprovadas <span id="count-approved" class="count">0</span></h2>
+      <div id="approved"></div>
+    </section>
+  </div>
+
+  <script>
+    var REFRESH_MS = 3000;
+    var busy = {};   // ids com ação em andamento (evita clique duplo)
+
+    function esc(s) {
+      return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function fmtTime(iso) {
+      if (!iso) return '';
+      return iso.slice(0, 19).replace('T', ' ') + ' UTC';
+    }
+
+    async function api(method, path) {
+      var r = await fetch(path, { method: method });
+      if (!r.ok) {
+        var msg = 'erro';
+        try { msg = (await r.json()).detail || msg; } catch (e) {}
+        throw new Error(msg);
+      }
+      return r.json();
+    }
+
+    async function action(method, path, id) {
+      if (busy[id]) return;
+      busy[id] = true;
+      try {
+        await api(method, path);
+        await refresh();
+      } catch (e) {
+        alert('Falhou: ' + e.message);
+      } finally {
+        busy[id] = false;
+      }
+    }
+
+    function pendingCard(it) {
+      return '' +
+        '<div class="card">' +
+          '<div class="title">' + esc(it.query) + '</div>' +
+          '<div class="meta">#' + it.id + ' · ' + fmtTime(it.submitted_at) +
+            ' · IP ' + esc(it.submitter_ip || '—') + '</div>' +
+          '<div class="actions">' +
+            '<button class="btn-approve" onclick="action(\'POST\',\'/api/approve/' + it.id + '\',' + it.id + ')">✅ Aprovar</button>' +
+            '<button class="btn-reject" onclick="action(\'POST\',\'/api/reject/' + it.id + '\',' + it.id + ')">❌ Reprovar</button>' +
+          '</div>' +
+        '</div>';
+    }
+
+    var LABEL = { approved:'Na fila', downloading:'Baixando…', ready:'Pronto', failed:'Falhou' };
+
+    function approvedCard(it) {
+      var title = it.matched_title || it.query;
+      var badge = it.status === 'downloading'
+        ? '<span class="badge downloading"><span class="spin"></span>' + LABEL[it.status] + '</span>'
+        : '<span class="badge ' + it.status + '">' + (LABEL[it.status] || it.status) + '</span>';
+
+      var meta = [];
+      if (it.source) meta.push(esc(it.source));
+      if (it.retry_count) meta.push('tentativa #' + (it.retry_count + 1));
+      meta.push('#' + it.id);
+
+      var html = '<div class="card">' +
+        '<div class="title">' + badge + esc(title) + '</div>' +
+        '<div class="meta">' + meta.join(' · ') + '</div>';
+
+      if (it.status === 'ready' && it.file_path)
+        html += '<div class="path">📁 ' + esc(it.file_path) + '</div>';
+      if (it.error_message)
+        html += '<div class="err">🚨 ' + esc(it.error_message) + '</div>';
+
+      if (it.status === 'ready') {
+        html += '<div class="actions">' +
+          '<button class="btn-played" onclick="action(\'POST\',\'/api/played/' + it.id + '\',' + it.id + ')">🎵 Tocado</button>' +
+          '</div>';
+      } else if (it.status === 'failed') {
+        html += '<div class="actions">' +
+          '<button class="btn-retry" onclick="action(\'POST\',\'/api/retry/' + it.id + '\',' + it.id + ')">🔄 Re-tentar</button>' +
+          '<button class="btn-ghost" onclick="action(\'POST\',\'/api/played/' + it.id + '\',' + it.id + ')">Dispensar</button>' +
+          '</div>';
+      }
+      html += '</div>';
+      return html;
+    }
+
+    function setConn(ok) {
+      document.getElementById('dot').className = 'dot' + (ok ? '' : ' off');
+      document.getElementById('conn').textContent = ok ? 'conectado' : 'sem conexão';
+    }
+
+    async function refresh() {
+      try {
+        var [pending, approved] = await Promise.all([
+          api('GET', '/api/pending'),
+          api('GET', '/api/approved'),
+        ]);
+        setConn(true);
+
+        document.getElementById('count-pending').textContent = pending.length;
+        document.getElementById('count-approved').textContent = approved.length;
+
+        document.getElementById('pending').innerHTML = pending.length
+          ? pending.map(pendingCard).join('')
+          : '<div class="empty">Nenhum pedido aguardando.</div>';
+
+        document.getElementById('approved').innerHTML = approved.length
+          ? approved.map(approvedCard).join('')
+          : '<div class="empty">Nenhum download em andamento ou concluído.</div>';
+      } catch (e) {
+        setConn(false);
+      }
+    }
+
+    function tick() {
+      if (document.getElementById('auto').checked) refresh();
+    }
+
+    refresh();
+    setInterval(tick, REFRESH_MS);
+  </script>
+</body>
+</html>

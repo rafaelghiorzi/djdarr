@@ -1,0 +1,44 @@
+services:
+
+  # ── Container A: página dos fãs (público) ──────────────────────────────────
+  container_a:
+    build:
+      context: ./container_a
+    ports:
+      - "8000:8000"   # remova esta linha em produção; acesso via cloudflared
+    environment:
+      TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY}
+      TURNSTILE_SITE_KEY:   ${TURNSTILE_SITE_KEY}
+      CONTAINER_B_URL:      http://container_b:8001
+      FAN_PAGE_ORIGIN:      ${FAN_PAGE_ORIGIN:-}
+    networks:
+      - djdarr_net
+    restart: unless-stopped
+    depends_on:
+      - container_b
+
+  # ── Container B: painel do DJ + API + worker de download ──────────────────
+  container_b:
+    build:
+      context: ./container_b
+    ports:
+      - "8501:8501"   # painel HTML + API de gestão (via Cloudflare Access)
+      # porta 8001 (API interna) intencionalmente NÃO exposta ao host
+    volumes:
+      - ${DOWNLOADS_PATH:?Defina DOWNLOADS_PATH no .env}:/downloads
+      - djdarr_data:/data
+    environment:
+      DOWNLOADS_PATH:     /downloads
+      AUDIO_FORMAT:       ${AUDIO_FORMAT:-wav}
+      MAX_QUEUE_SIZE:     ${MAX_QUEUE_SIZE:-50}
+      MAX_PENDING_PER_IP: ${MAX_PENDING_PER_IP:-3}
+    networks:
+      - djdarr_net
+    restart: unless-stopped
+
+networks:
+  djdarr_net:
+    driver: bridge
+
+volumes:
+  djdarr_data:   # volume para o SQLite (/data/djdarr.db dentro do container_b)

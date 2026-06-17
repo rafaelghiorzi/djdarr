@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Peça uma Música 🎧</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0d0d0f;
+      color: #e8e8e8;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      min-height: 100dvh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+    }
+
+    .card {
+      background: #18181c;
+      border: 1px solid #2a2a32;
+      border-radius: 1.2rem;
+      padding: 2.5rem 2rem;
+      width: 100%;
+      max-width: 460px;
+      box-shadow: 0 8px 48px rgba(0,0,0,.6);
+    }
+
+    .logo {
+      font-size: 3rem;
+      text-align: center;
+      margin-bottom: .5rem;
+      line-height: 1;
+    }
+
+    h1 {
+      font-size: 1.45rem;
+      font-weight: 700;
+      text-align: center;
+      margin-bottom: .4rem;
+      letter-spacing: -.01em;
+    }
+
+    .subtitle {
+      color: #777;
+      font-size: .88rem;
+      text-align: center;
+      margin-bottom: 2rem;
+      line-height: 1.55;
+    }
+
+    input[type="text"] {
+      width: 100%;
+      background: #111116;
+      border: 1.5px solid #2e2e3a;
+      border-radius: .65rem;
+      color: #e8e8e8;
+      font-size: 1rem;
+      padding: .8rem 1rem;
+      outline: none;
+      transition: border-color .18s;
+      margin-bottom: 1rem;
+    }
+    input[type="text"]:focus { border-color: #6c63ff; }
+    input[type="text"]::placeholder { color: #4a4a58; }
+
+    .ts-wrap {
+      display: flex;
+      justify-content: center;
+      margin-bottom: 1rem;
+      min-height: 65px;
+    }
+
+    button[type="submit"] {
+      width: 100%;
+      background: #6c63ff;
+      border: none;
+      border-radius: .65rem;
+      color: #fff;
+      cursor: pointer;
+      font-size: 1rem;
+      font-weight: 600;
+      letter-spacing: .01em;
+      padding: .85rem;
+      transition: background .18s, opacity .18s;
+      margin-top: .25rem;
+    }
+    button[type="submit"]:hover:not(:disabled) { background: #7d75ff; }
+    button[type="submit"]:disabled { opacity: .45; cursor: not-allowed; }
+
+    .msg {
+      border-radius: .55rem;
+      font-size: .9rem;
+      margin-top: 1.1rem;
+      padding: .75rem 1rem;
+      text-align: center;
+      display: none;
+      line-height: 1.45;
+    }
+    .msg.success {
+      background: #0a2e18;
+      color: #4ade80;
+      border: 1px solid #15532e;
+      display: block;
+    }
+    .msg.error {
+      background: #2d0a0a;
+      color: #f87171;
+      border: 1px solid #6b1414;
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">🎧</div>
+    <h1>Peça uma Música</h1>
+    <p class="subtitle">
+      Cole um link do YouTube ou SoundCloud,<br>
+      ou escreva o nome da música.
+    </p>
+
+    <form id="form" autocomplete="off" novalidate>
+      <input
+        id="query"
+        type="text"
+        placeholder="Nome da música ou link…"
+        maxlength="300"
+        autocomplete="off"
+        spellcheck="false"
+        required
+      />
+      <div class="ts-wrap">
+        <div id="ts-widget"></div>
+      </div>
+      <button id="btn" type="submit">Enviar pedido</button>
+    </form>
+
+    <div id="msg" class="msg"></div>
+  </div>
+
+  <script
+    src="https://challenges.cloudflare.com/turnstile/v0/api.js?onload=_tsOnLoad"
+    async defer
+  ></script>
+  <script>
+    var _tsToken = null;
+
+    function _tsOnLoad() {
+      turnstile.render('#ts-widget', {
+        sitekey: '__TURNSTILE_SITE_KEY__',
+        callback: function(t) { _tsToken = t; },
+        'expired-callback': function() { _tsToken = null; },
+        'error-callback': function() { _tsToken = null; },
+      });
+    }
+
+    var form = document.getElementById('form');
+    var btn  = document.getElementById('btn');
+    var msg  = document.getElementById('msg');
+
+    form.addEventListener('submit', async function(e) {
+      e.preventDefault();
+      var query = document.getElementById('query').value.trim();
+      if (!query) return;
+
+      btn.disabled = true;
+      btn.textContent = 'Enviando…';
+      msg.className = 'msg';
+
+      try {
+        var resp = await fetch('/submit', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: query, cf_turnstile_response: _tsToken || '' }),
+        });
+
+        var data = {};
+        try { data = await resp.json(); } catch(_) {}
+
+        if (resp.ok) {
+          showMsg('Pedido enviado! Se o DJ tocar, você vai ouvir. 🎶', 'success');
+          form.reset();
+        } else {
+          showMsg(data.detail || 'Erro ao enviar. Tente novamente.', 'error');
+        }
+      } catch(err) {
+        showMsg('Erro de conexão. Tente novamente.', 'error');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Enviar pedido';
+        _tsToken = null;
+        if (typeof turnstile !== 'undefined') turnstile.reset('#ts-widget');
+      }
+    });
+
+    function showMsg(text, type) {
+      msg.textContent = text;
+      msg.className = 'msg ' + type;
+    }
+  </script>
+</body>
+</html>
