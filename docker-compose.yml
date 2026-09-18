@@ -4,8 +4,8 @@ services:
   fans_page:
     build:
       context: ./fans
-    ports:
-      - "8000:8000"   # remova esta linha em produção; acesso via cloudflared
+    # ports:
+    #   - "8000:8000"   # só em desenvolvimento local; em produção o acesso é via cloudflared
     environment:
       TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY}
       TURNSTILE_SITE_KEY:   ${TURNSTILE_SITE_KEY}
@@ -21,9 +21,9 @@ services:
   dj_panel:
     build:
       context: ./painel
-    ports:
-      - "8501:8501"   # painel HTML + API de gestão (via Cloudflare Access)
-      # porta 8001 (API interna) intencionalmente NÃO exposta ao host
+    # ports:
+    #   - "8501:8501"   # só em desenvolvimento local; em produção o acesso é via cloudflared + Cloudflare Access
+    #   # porta 8001 (API interna) NUNCA deve ser exposta ao host nem ao túnel
     volumes:
       - ${DOWNLOADS_PATH:?Defina DOWNLOADS_PATH no .env}:/downloads
       - djdarr_data:/data
@@ -36,6 +36,21 @@ services:
     networks:
       - djdarr_net
     restart: unless-stopped
+
+  # ── Cloudflare Tunnel: expõe fans_page e dj_panel na internet ──────────────
+  # Ingress (hostname público → serviço) é configurado no dashboard do túnel,
+  # não aqui. Este container só conecta o túnel usando o token do dashboard.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command: tunnel run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?Defina CLOUDFLARE_TUNNEL_TOKEN no .env}
+    networks:
+      - djdarr_net
+    restart: unless-stopped
+    depends_on:
+      - fans_page
+      - dj_panel
 
 networks:
   djdarr_net:

@@ -181,52 +181,69 @@ commite junto com o `pyproject.toml`).
 ## Publicando na internet (produção)
 
 Em produção, **não** se expõe as portas diretamente — o acesso passa pelo
-Cloudflare Tunnel. Recomenda-se remover/comentar as linhas `ports:` do
-`docker-compose.yml` e deixar o `cloudflared` rotear o tráfego.
+Cloudflare Tunnel via um terceiro serviço no `docker-compose.yml`
+(`cloudflared`), que conecta ao túnel usando um **token** em vez de um
+`config.yml` local. As linhas `ports:` de `fans_page` e `dj_panel` já vêm
+comentadas no compose para produção; descomente-as apenas se precisar testar
+via `localhost` no mesmo host.
 
-### 1. Suba os containers
+Este projeto usa um túnel criado pelo **dashboard Zero Trust** (não pela CLI),
+então o roteamento hostname → serviço é configurado no próprio dashboard, não
+em um `config.yml`.
+
+### 1. Configure os hostnames públicos no dashboard
+
+Zero Trust → **Networks → Tunnels** → seu túnel → aba **Public Hostname** →
+**Add a public hostname**, duas vezes:
+
+| Hostname público | Service |
+|---|---|
+| `fans.rafaelghiorzi.org` | `HTTP` → `fans_page:8000` |
+| `painel.rafaelghiorzi.org` | `HTTP` → `dj_panel:8501` |
+
+Use o nome do serviço do compose (`fans_page`, `dj_panel`), não `localhost` —
+o `cloudflared` roda como container na mesma rede docker (`djdarr_net`) e
+resolve os outros serviços pelo nome. O Cloudflare cria o registro DNS
+automaticamente ao salvar cada hostname.
+
+> A porta interna `8001` (`internal:app`) **nunca** deve virar um hostname
+> público — ela só é acessível pela rede interna do docker e é o único
+> caminho do Container A para o banco.
+
+### 2. Pegue o token do túnel
+
+Na mesma tela do túnel → **Configure** (ou no passo de instalação do
+conector) → copie o token — é a string longa em base64 depois de `--token` no
+comando de exemplo. Cole em `CLOUDFLARE_TUNNEL_TOKEN` no `.env`.
+
+### 3. Proteja o painel com Cloudflare Access
+
+Zero Trust → **Access → Applications** → **Add an application** →
+*Self-hosted*, domínio `painel.rafaelghiorzi.org`, com uma política que libere
+só o seu e-mail. **Faça isso antes do passo 4** — sem Cloudflare Access, o
+painel do DJ (aprovar/rejeitar pedidos, ver IPs, ver caminhos de arquivo) fica
+aberto para qualquer pessoa na internet assim que o hostname existir.
+
+### 4. Suba tudo
 
 ```bash
 docker compose up --build -d
 ```
 
-### 2. Rode o Cloudflare Tunnel (em outro terminal)
+O `cloudflared` conecta ao túnel automaticamente; `docker compose logs -f cloudflared`
+mostra o status da conexão. A partir daí, `fans.rafaelghiorzi.org` e
+`painel.rafaelghiorzi.org` já respondem.
 
-Com o `cloudflared` já autenticado e um túnel criado, configure o ingress para
-apontar cada hostname ao container correspondente. Exemplo de `config.yml` do
-`cloudflared`:
+### Antes de ir ao ar, confira
 
-```yaml
-tunnel: <ID-do-tunnel>
-credentials-file: /caminho/para/<ID-do-tunnel>.json
-
-ingress:
-  # Página pública dos fãs → Container A
-  - hostname: fans.seudominio.com
-    service: http://localhost:8000
-
-  # Painel privado do DJ → Container B (proteja com Cloudflare Access!)
-  - hostname: painel.seudominio.com
-    service: http://localhost:8501
-
-  - service: http_status:404
-```
-
-E então, em um terminal separado:
-
-```bash
-cloudflared tunnel run <nome-ou-ID-do-tunnel>
-```
-
-> A porta interna `8001` (`internal:app`) **nunca** deve aparecer no ingress do
-> túnel nem nos `ports:` do compose — ela só é acessível pela rede interna do
-> docker e é o único caminho do Container A para o banco.
-
-### 3. Proteja o painel com Cloudflare Access
-
-No painel Zero Trust da Cloudflare, crie uma aplicação do tipo *Self-hosted*
-para `painel.seudominio.com` e adicione uma política que só libere o seu e-mail.
-Sem isso, o painel do DJ ficaria aberto na internet.
+- [ ] `CLOUDFLARE_TUNNEL_TOKEN` preenchido no `.env`.
+- [ ] Cloudflare Access protegendo `painel.rafaelghiorzi.org` (passo 3).
+- [ ] `FAN_PAGE_ORIGIN=https://fans.rafaelghiorzi.org` no `.env` (com `https://`).
+- [ ] No widget Turnstile (dash.cloudflare.com → Turnstile), o domínio
+      `fans.rafaelghiorzi.org` está na lista de domínios permitidos — senão o
+      widget não carrega/valida no domínio público.
+- [ ] `DOWNLOADS_PATH` aponta para a pasta onde você realmente quer que as
+      músicas caiam (a pasta que o seu software de DJ vai ler).
 
 ---
 
