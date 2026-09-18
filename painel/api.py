@@ -3,10 +3,18 @@ import os
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
 
 from db import get_db, init_db
-from worker import enqueue, start_worker
+from worker import (
+    active_downloads,
+    enqueue,
+    is_enabled,
+    queue_size,
+    set_enabled,
+    start_worker,
+    worker_count,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -14,12 +22,15 @@ logging.basicConfig(
 )
 logger = logging.getLogger("djdarr.api")
 
+_THUMBS_PATH = os.environ.get("THUMBS_PATH", "/data/thumbs")
+
 app = FastAPI(title="Djdarr Painel", docs_url=None, redoc_url=None)
 
 
 @app.on_event("startup")
 def startup() -> None:
     init_db()
+    Path(_THUMBS_PATH).mkdir(parents=True, exist_ok=True)
 
     approved_ids: list[int] = []
     with get_db() as conn:
@@ -40,7 +51,9 @@ def startup() -> None:
         enqueue(rid)
 
     logger.info(
-        "Painel iniciado. Worker rodando. %d item(s) aprovado(s) reenfileirado(s).",
+        "Painel iniciado. Daemon %s (%d worker(s)). %d item(s) aprovado(s) reenfileirado(s).",
+        "ligado" if is_enabled() else "desligado",
+        worker_count(),
         len(approved_ids),
     )
 
@@ -161,3 +174,37 @@ def retry(request_id: int) -> dict:
         )
     enqueue(request_id)
     return {"ok": True}
+
+
+# ── Capa da faixa ─────────────────────────────────────────────────────────────
+
+@app.get("/api/thumb/{request_id}")
+def get_thumb(request_id: int):
+    path = Path(_THUMBS_PATH) / f"{request_id}.jpg"
+    if not path.is_file():
+        raise HTTPException(404, "Sem capa.")
+    return FileResponse(str(path), media_type="image/jpeg")
+
+
+# ── Daemon de download (pool de workers) ──────────────────────────────────────
+
+@app.get("/api/worker/status")
+def worker_status() -> dict:
+    return {
+        "enabled": is_enabled(),
+        "worker_count": worker_count(),
+        "queue_size": queue_size(),
+        "active": active_downloads(),
+    }
+
+
+@app.post("/api/worker/enable")
+def worker_enable() -> dict:
+    set_enabled(True)
+    return {"ok": True, "enabled": True}
+
+
+@app.post("/api/worker/disable")
+def worker_disable() -> dict:
+    set_enabled(False)
+    return {"ok": True, "enabled": False}

@@ -2,131 +2,290 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Peça uma Música 🎧</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0a0612" />
+  <title>Peça uma Música 🎃</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Creepster&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+    :root {
+      --bg-0: #06040c;
+      --bg-1: #0e0a1c;
+      --purple: #7c3aed;
+      --purple-bright: #a78bfa;
+      --orange: #ff7a1a;
+      --orange-bright: #ffb04d;
+      --slime: #7bff8a;
+      --blood: #ff4d6d;
+      --ink: #f3ecff;
+      --muted: #9b8fc4;
+      --card: rgba(20, 13, 38, 0.72);
+      --border: rgba(167, 139, 250, 0.28);
+    }
+
+    html, body { height: 100%; }
 
     body {
-      background: #0d0d0f;
-      color: #e8e8e8;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background:
+        radial-gradient(ellipse 90% 60% at 15% -5%, rgba(124, 58, 237, 0.35), transparent 60%),
+        radial-gradient(ellipse 80% 55% at 90% 8%, rgba(255, 122, 26, 0.22), transparent 55%),
+        radial-gradient(ellipse 70% 60% at 50% 115%, rgba(255, 77, 109, 0.16), transparent 60%),
+        linear-gradient(180deg, var(--bg-0), var(--bg-1) 45%, var(--bg-0));
+      color: var(--ink);
+      font-family: "Space Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       min-height: 100dvh;
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 1.5rem;
+      padding: max(1.5rem, env(safe-area-inset-top)) 1.25rem max(2rem, env(safe-area-inset-bottom));
+      position: relative;
+      overflow-x: hidden;
     }
 
+    /* ── textura tech: scanlines sutis ─────────────────────────────── */
+    body::before {
+      content: "";
+      position: fixed; inset: 0;
+      background: repeating-linear-gradient(
+        180deg, rgba(255,255,255,0.025) 0px, rgba(255,255,255,0.025) 1px,
+        transparent 1px, transparent 3px
+      );
+      pointer-events: none;
+      z-index: 1;
+      mix-blend-mode: overlay;
+    }
+
+    /* ── névoa animada no rodapé ────────────────────────────────────── */
+    .fog {
+      position: fixed; left: -20%; right: -20%; bottom: -10%;
+      height: 45vh;
+      background: linear-gradient(0deg, rgba(124,58,237,0.22), transparent);
+      filter: blur(30px);
+      animation: fogDrift 16s ease-in-out infinite alternate;
+      pointer-events: none;
+      z-index: 0;
+    }
+    @keyframes fogDrift {
+      from { transform: translateX(-4%) scaleX(1); }
+      to   { transform: translateX(4%) scaleX(1.08); }
+    }
+
+    /* ── teias nos cantos ───────────────────────────────────────────── */
+    .web {
+      position: fixed; width: 130px; height: 130px;
+      opacity: 0.35; pointer-events: none; z-index: 1;
+      filter: drop-shadow(0 0 6px rgba(167,139,250,0.25));
+    }
+    .web.tl { top: -18px; left: -18px; }
+    .web.tr { top: -18px; right: -18px; transform: scaleX(-1); }
+
+    /* ── morcegos flutuando ─────────────────────────────────────────── */
+    .bats { position: fixed; inset: 0; pointer-events: none; z-index: 1; overflow: hidden; }
+    .bat {
+      position: absolute; font-size: 1.4rem; top: 100%; left: var(--x, 10%);
+      filter: drop-shadow(0 0 4px rgba(0,0,0,0.6));
+      animation: fly var(--dur, 13s) linear infinite;
+      animation-delay: var(--delay, 0s);
+      opacity: 0.85;
+    }
+    @keyframes fly {
+      0%   { transform: translate(0, 10vh) rotate(0deg) scale(0.9); opacity: 0; }
+      8%   { opacity: 0.9; }
+      50%  { transform: translate(6vw, -55vh) rotate(-8deg) scale(1.1); }
+      92%  { opacity: 0.9; }
+      100% { transform: translate(-4vw, -115vh) rotate(6deg) scale(0.85); opacity: 0; }
+    }
+
+    /* ── cartão principal ───────────────────────────────────────────── */
     .card {
-      background: #18181c;
-      border: 1px solid #2a2a32;
-      border-radius: 1.2rem;
-      padding: 2.5rem 2rem;
+      position: relative;
+      z-index: 2;
+      background: var(--card);
+      backdrop-filter: blur(18px) saturate(140%);
+      -webkit-backdrop-filter: blur(18px) saturate(140%);
+      border: 1px solid var(--border);
+      border-radius: 1.4rem;
+      padding: 2.1rem 1.6rem 1.8rem;
       width: 100%;
-      max-width: 460px;
-      box-shadow: 0 8px 48px rgba(0,0,0,.6);
+      max-width: 440px;
+      box-shadow:
+        0 0 0 1px rgba(255,122,26,0.06),
+        0 20px 60px rgba(0,0,0,0.65),
+        0 0 60px rgba(124,58,237,0.18);
     }
 
-    .logo {
-      font-size: 3rem;
+    .pumpkin {
+      font-size: 3.4rem;
       text-align: center;
-      margin-bottom: .5rem;
       line-height: 1;
+      margin-bottom: .6rem;
+      animation: flicker 4.5s ease-in-out infinite;
+      filter: drop-shadow(0 0 18px rgba(255,122,26,0.55));
+    }
+    @keyframes flicker {
+      0%, 100% { filter: drop-shadow(0 0 18px rgba(255,122,26,0.55)); transform: scale(1); }
+      45%      { filter: drop-shadow(0 0 9px rgba(255,122,26,0.3));  transform: scale(0.985); }
+      50%      { filter: drop-shadow(0 0 24px rgba(255,176,77,0.7)); transform: scale(1.02); }
+      55%      { filter: drop-shadow(0 0 18px rgba(255,122,26,0.55)); transform: scale(1); }
     }
 
     h1 {
-      font-size: 1.45rem;
-      font-weight: 700;
+      font-family: "Creepster", "Space Grotesk", cursive;
+      font-weight: 400;
+      font-size: 2.1rem;
+      letter-spacing: .03em;
       text-align: center;
-      margin-bottom: .4rem;
-      letter-spacing: -.01em;
+      margin-bottom: .5rem;
+      line-height: 1.15;
+      background: linear-gradient(135deg, var(--orange-bright), var(--purple-bright) 65%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      text-shadow: 0 0 40px rgba(255,122,26,0.25);
     }
 
     .subtitle {
-      color: #777;
-      font-size: .88rem;
+      color: var(--muted);
+      font-size: .92rem;
       text-align: center;
-      margin-bottom: 2rem;
-      line-height: 1.55;
+      margin-bottom: 1.9rem;
+      line-height: 1.6;
+    }
+
+    label.field-label {
+      display: block;
+      font-size: .78rem;
+      font-weight: 600;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+      color: var(--purple-bright);
+      margin-bottom: .5rem;
     }
 
     input[type="text"] {
       width: 100%;
-      background: #111116;
-      border: 1.5px solid #2e2e3a;
-      border-radius: .65rem;
-      color: #e8e8e8;
+      background: rgba(6, 4, 12, 0.65);
+      border: 1.5px solid var(--border);
+      border-radius: .85rem;
+      color: var(--ink);
+      font-family: inherit;
       font-size: 1rem;
-      padding: .8rem 1rem;
+      padding: .95rem 1.05rem;
       outline: none;
-      transition: border-color .18s;
-      margin-bottom: 1rem;
+      transition: border-color .18s, box-shadow .18s;
+      margin-bottom: 1.1rem;
     }
-    input[type="text"]:focus { border-color: #6c63ff; }
-    input[type="text"]::placeholder { color: #4a4a58; }
+    input[type="text"]:focus {
+      border-color: var(--orange);
+      box-shadow: 0 0 0 4px rgba(255,122,26,0.14), 0 0 24px rgba(255,122,26,0.15);
+    }
+    input[type="text"]::placeholder { color: #5f5580; }
 
     .ts-wrap {
       display: flex;
       justify-content: center;
-      margin-bottom: 1rem;
+      margin-bottom: 1.1rem;
       min-height: 65px;
     }
 
     button[type="submit"] {
       width: 100%;
-      background: #6c63ff;
+      background: linear-gradient(135deg, var(--purple), var(--orange) 130%);
       border: none;
-      border-radius: .65rem;
+      border-radius: .85rem;
       color: #fff;
       cursor: pointer;
-      font-size: 1rem;
-      font-weight: 600;
+      font-family: inherit;
+      font-size: 1.02rem;
+      font-weight: 700;
       letter-spacing: .01em;
-      padding: .85rem;
-      transition: background .18s, opacity .18s;
-      margin-top: .25rem;
+      padding: 1rem;
+      transition: transform .12s ease, filter .18s, opacity .18s, box-shadow .18s;
+      box-shadow: 0 10px 30px rgba(124,58,237,0.35);
+      display: flex; align-items: center; justify-content: center; gap: .5rem;
     }
-    button[type="submit"]:hover:not(:disabled) { background: #7d75ff; }
-    button[type="submit"]:disabled { opacity: .45; cursor: not-allowed; }
+    button[type="submit"]:hover:not(:disabled) { filter: brightness(1.1); box-shadow: 0 12px 34px rgba(255,122,26,0.4); }
+    button[type="submit"]:active:not(:disabled) { transform: scale(0.98); }
+    button[type="submit"]:disabled { opacity: .5; cursor: not-allowed; box-shadow: none; }
 
     .msg {
-      border-radius: .55rem;
+      border-radius: .7rem;
       font-size: .9rem;
       margin-top: 1.1rem;
-      padding: .75rem 1rem;
+      padding: .8rem 1rem;
       text-align: center;
       display: none;
-      line-height: 1.45;
+      line-height: 1.5;
+      border: 1px solid transparent;
     }
     .msg.success {
-      background: #0a2e18;
-      color: #4ade80;
-      border: 1px solid #15532e;
+      background: rgba(123, 255, 138, 0.1);
+      color: var(--slime);
+      border-color: rgba(123, 255, 138, 0.35);
       display: block;
+      text-shadow: 0 0 12px rgba(123,255,138,0.35);
     }
     .msg.error {
-      background: #2d0a0a;
-      color: #f87171;
-      border: 1px solid #6b1414;
+      background: rgba(255, 77, 109, 0.1);
+      color: var(--blood);
+      border-color: rgba(255, 77, 109, 0.35);
       display: block;
+      text-shadow: 0 0 12px rgba(255,77,109,0.3);
+    }
+
+    .hint {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: .4rem;
+      margin-top: 1.5rem;
+      font-size: .74rem;
+      color: #524a72;
+      text-align: center;
+    }
+
+    @media (max-width: 380px) {
+      h1 { font-size: 1.8rem; }
+      .card { padding: 1.7rem 1.2rem 1.5rem; }
     }
   </style>
 </head>
 <body>
+  <svg class="web tl" viewBox="0 0 100 100" fill="none" stroke="rgba(200,190,255,0.9)" stroke-width="0.7">
+    <path d="M0 0 L100 100 M0 0 L60 0 M0 0 L0 60 M0 0 L100 30 M0 0 L30 100"/>
+    <path d="M0 20 Q20 22 20 0 M0 45 Q35 45 45 0 M0 70 Q50 68 70 0 M0 95 Q60 90 95 0" fill="none"/>
+  </svg>
+  <svg class="web tr" viewBox="0 0 100 100" fill="none" stroke="rgba(200,190,255,0.9)" stroke-width="0.7">
+    <path d="M0 0 L100 100 M0 0 L60 0 M0 0 L0 60 M0 0 L100 30 M0 0 L30 100"/>
+    <path d="M0 20 Q20 22 20 0 M0 45 Q35 45 45 0 M0 70 Q50 68 70 0 M0 95 Q60 90 95 0" fill="none"/>
+  </svg>
+
+  <div class="fog"></div>
+  <div class="bats" aria-hidden="true">
+    <span class="bat" style="--x:8%;  --dur:11s; --delay:0s;">🦇</span>
+    <span class="bat" style="--x:70%; --dur:14s; --delay:2.5s;">🦇</span>
+    <span class="bat" style="--x:35%; --dur:12.5s; --delay:5s;">🦇</span>
+    <span class="bat" style="--x:85%; --dur:16s; --delay:1.2s;">🦇</span>
+    <span class="bat" style="--x:20%; --dur:13.5s; --delay:7s;">🦇</span>
+  </div>
+
   <div class="card">
-    <div class="logo">🎧</div>
+    <div class="pumpkin">🎃</div>
     <h1>Peça uma Música</h1>
     <p class="subtitle">
       Cole um link do YouTube ou SoundCloud,<br>
-      ou escreva o nome da música.
+      ou invoque o nome da música e do artista.
     </p>
 
     <form id="form" autocomplete="off" novalidate>
+      <label class="field-label" for="query">Seu pedido</label>
       <input
         id="query"
         type="text"
-        placeholder="Nome da música ou link…"
+        placeholder="ex: Thriller - Michael Jackson"
         maxlength="300"
         autocomplete="off"
         spellcheck="false"
@@ -135,10 +294,12 @@
       <div class="ts-wrap">
         <div id="ts-widget"></div>
       </div>
-      <button id="btn" type="submit">Enviar pedido</button>
+      <button id="btn" type="submit">🎃 Enviar pedido</button>
     </form>
 
     <div id="msg" class="msg"></div>
+
+    <p class="hint">🕸️ que comece a festa 🕷️</p>
   </div>
 
   <script
@@ -151,6 +312,7 @@
     function _tsOnLoad() {
       turnstile.render('#ts-widget', {
         sitekey: '__TURNSTILE_SITE_KEY__',
+        theme: 'dark',
         callback: function(t) { _tsToken = t; },
         'expired-callback': function() { _tsToken = null; },
         'error-callback': function() { _tsToken = null; },
@@ -167,7 +329,7 @@
       if (!query) return;
 
       btn.disabled = true;
-      btn.textContent = 'Enviando…';
+      btn.textContent = '🕯️ Enviando…';
       msg.className = 'msg';
 
       try {
@@ -181,16 +343,16 @@
         try { data = await resp.json(); } catch(_) {}
 
         if (resp.ok) {
-          showMsg('Pedido enviado! Se o DJ tocar, você vai ouvir. 🎶', 'success');
+          showMsg('👻 Pedido enviado! Se o DJ tocar, você vai ouvir.', 'success');
           form.reset();
         } else {
-          showMsg(data.detail || 'Erro ao enviar. Tente novamente.', 'error');
+          showMsg(data.detail || '💀 Erro ao enviar. Tente novamente.', 'error');
         }
       } catch(err) {
-        showMsg('Erro de conexão. Tente novamente.', 'error');
+        showMsg('⚡ Erro de conexão. Tente novamente.', 'error');
       } finally {
         btn.disabled = false;
-        btn.textContent = 'Enviar pedido';
+        btn.textContent = '🎃 Enviar pedido';
         _tsToken = null;
         if (typeof turnstile !== 'undefined') turnstile.reset('#ts-widget');
       }

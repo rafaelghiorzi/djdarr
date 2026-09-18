@@ -40,10 +40,17 @@ O projeto roda em **dois containers** orquestrados via `docker-compose`:
   - `internal:8001` — único endpoint (`/internal/submit`) que o Container A usa
     para inserir pedidos. **Não exposto** ao host nem ao túnel.
   - `api:8501` — painel HTML do DJ + API de gestão (listar pendentes/aprovados,
-    aprovar, rejeitar, marcar como tocada, re-tentar).
-  - `worker` — thread em background que processa a fila de aprovados e baixa
-    cada faixa com `yt-dlp` (busca em YouTube e SoundCloud, escolhe o melhor
-    resultado por fuzzy matching com `rapidfuzz`).
+    aprovar, rejeitar, marcar como tocada, re-tentar, ligar/desligar o daemon
+    de download).
+  - `worker` — **daemon opcional** (desligado por padrão, ligado no painel)
+    com um **pool de 2–3 threads** (`DOWNLOAD_WORKERS`) que processam a fila
+    de aprovados em paralelo, baixando cada faixa com `yt-dlp` (busca em
+    YouTube e SoundCloud, escolhe o melhor resultado por fuzzy matching com
+    `rapidfuzz`). Desligar o daemon não cancela downloads em andamento — só
+    para de puxar novos itens da fila. Todo arquivo baixado é renomeado para
+    `Música - Artista`, convertido para **MP3** com a capa do álbum embutida
+    (tags ID3, via `mutagen`) e uma cópia da capa fica disponível para o
+    painel em `/api/thumb/{id}`.
   - `SQLite` em `/data/djdarr.db` (volume persistente) guarda o estado de cada
     pedido: `pending → approved → downloading → ready/failed → played`.
 
@@ -67,6 +74,13 @@ O projeto roda em **dois containers** orquestrados via `docker-compose`:
 > [Rodando localmente](#rodando-localmente). O Cloudflare só é necessário para
 > publicar o serviço na internet de forma segura.
 
+As dependências Python de cada serviço são gerenciadas com **[uv](https://docs.astral.sh/uv/)**
+(`pyproject.toml` + `uv.lock`) — os Dockerfiles já instalam o `uv` e rodam
+`uv sync --locked` sozinhos, **você não precisa instalar nada disso no host**
+para rodar via Docker. Só instale o `uv` localmente se for rodar/editar um dos
+serviços fora do container (veja [Desenvolvimento local sem
+Docker](#desenvolvimento-local-sem-docker)).
+
 ---
 
 ## Configuração
@@ -86,15 +100,22 @@ FAN_PAGE_ORIGIN=https://fans.seudominio.com
 
 # ── Volume de downloads ───────────────────────────────────────────────
 # Pasta LOCAL (do host) que será montada em /downloads no Container B.
-# É aqui que as músicas baixadas aparecem.
+# É aqui que as músicas baixadas aparecem, já nomeadas "Música - Artista.mp3".
 DOWNLOADS_PATH=/caminho/para/sua/pasta/de/downloads
 
-# Formato de áudio: wav (sem perdas, recomendado) ou mp3
-AUDIO_FORMAT=wav
+# Formato de áudio: mp3 (recomendado — grava tags ID3 + capa do álbum
+# embutida) ou wav (sem perdas, mas sem capa embutida no arquivo)
+AUDIO_FORMAT=mp3
 
 # ── Limites de fila ───────────────────────────────────────────────────
 MAX_QUEUE_SIZE=50        # máximo de pedidos pendentes simultâneos
 MAX_PENDING_PER_IP=3     # máximo de pedidos pendentes por IP
+
+# ── Daemon de download ───────────────────────────────────────────────
+# Quantos workers baixam em paralelo quando o daemon está ligado (2 ou 3).
+# O daemon fica desligado até você ligá-lo no painel — pedidos aprovados
+# ficam represados até lá.
+DOWNLOAD_WORKERS=2
 ```
 
 ### Chaves de teste do Turnstile
@@ -130,6 +151,30 @@ As músicas aprovadas serão baixadas na pasta apontada por `DOWNLOADS_PATH`.
 > Localmente, o painel **não** fica atrás do Cloudflare Access, ou seja, qualquer
 > pessoa na sua rede que alcance a porta `8501` consegue abrir o painel. Em
 > produção, isso é resolvido pelo Cloudflare Access (veja abaixo).
+
+---
+
+## Desenvolvimento local sem Docker
+
+Só necessário se você for rodar/editar `fans/` ou `painel/` diretamente no
+host (ex.: autocomplete/lint no editor, debugar sem rebuildar a imagem).
+Requer [uv](https://docs.astral.sh/uv/getting-started/installation/) instalado.
+
+```bash
+# fans/
+cd fans
+uv sync              # cria .venv/ e instala as dependências do uv.lock
+uv run uvicorn main:app --reload --port 8000
+
+# painel/ (em outro terminal)
+cd painel
+uv sync
+DB_PATH=./djdarr.db DOWNLOADS_PATH=./downloads uv run uvicorn api:app --reload --port 8501
+```
+
+Depois de adicionar/remover uma dependência no `pyproject.toml`, rode
+`uv lock` na mesma pasta para atualizar o `uv.lock` (ele **é** versionado —
+commite junto com o `pyproject.toml`).
 
 ---
 
@@ -192,13 +237,24 @@ Sem isso, o painel do DJ ficaria aberto na internet.
    o Turnstile e envia.
 2. **O DJ** vê o pedido aparecer na coluna **Pendentes** do painel e clica em
    **Aprovar** ou **Rejeitar**.
-3. Ao aprovar, o **worker** baixa a faixa automaticamente. O status caminha por
-   `approved → downloading → ready` (ou `failed`, com botão de **re-tentar**).
+3. Ao aprovar, o pedido entra na fila **Fila & baixando**. Se o **daemon**
+   estiver ligado (toggle no topo do painel), um dos workers pega o pedido e
+   baixa automaticamente; se estiver desligado, o pedido fica represado até
+   você ligar. O status caminha por `approved → downloading → ready` (ou
+   `failed`, com botão de **re-tentar**).
 4. Depois de tocar a música, o DJ marca como **tocada**.
 
 O download usa busca simultânea no **YouTube** e **SoundCloud**, comparando os
 resultados com a query por fuzzy matching e baixando o mais parecido, na melhor
-qualidade disponível, convertido para o formato definido em `AUDIO_FORMAT`.
+qualidade disponível. O arquivo final é sempre renomeado para
+**`Música - Artista.mp3`**, com essas mesmas tags gravadas no ID3 e a capa do
+álbum embutida (baixada do YouTube/SoundCloud).
+
+> A qualidade do "nome limpo" depende do que a plataforma de origem expõe.
+> Quando o título do vídeo/faixa segue a convenção `Artista - Música`, a
+> separação é exata. Sem esse padrão, o nome do canal/perfil é usado como
+> artista. Marcadores comuns como `(Official Video)`, `(Lyrics)`, `[HD]`,
+> `(4K Remaster)` etc. são removidos automaticamente.
 
 ---
 
@@ -212,17 +268,19 @@ djdarr/
 ├── fans/                       # Container A — página pública dos fãs
 │   ├── Dockerfile
 │   ├── main.py                 # FastAPI :8000 — /submit + Turnstile + rate limit
-│   ├── requirements.txt
+│   ├── pyproject.toml          # Dependências (gerenciadas com uv)
+│   ├── uv.lock
 │   └── static/index.html       # Página do fã
 │
-└── painel/                     # Container B — painel do DJ + API + worker
+└── painel/                     # Container B — painel do DJ + daemon de download
     ├── Dockerfile
     ├── start.sh                # Sobe internal:8001 e api:8501
     ├── api.py                  # FastAPI :8501 — painel HTML + API de gestão
     ├── internal.py             # FastAPI :8001 — /internal/submit (rede interna)
-    ├── worker.py               # Thread que baixa a fila de aprovados
+    ├── worker.py               # Pool de workers (daemon) que baixa a fila de aprovados
     ├── db.py                   # SQLite (estado dos pedidos)
-    ├── requirements.txt
+    ├── pyproject.toml          # Dependências (gerenciadas com uv)
+    ├── uv.lock
     ├── downloader/
     │   ├── __init__.py
     │   └── core.py             # Busca (YouTube/SoundCloud) + fuzzy + download

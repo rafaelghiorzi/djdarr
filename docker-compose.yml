@@ -29,9 +29,10 @@ services:
       - djdarr_data:/data
     environment:
       DOWNLOADS_PATH:     /downloads
-      AUDIO_FORMAT:       ${AUDIO_FORMAT:-wav}
+      AUDIO_FORMAT:       ${AUDIO_FORMAT:-mp3}
       MAX_QUEUE_SIZE:     ${MAX_QUEUE_SIZE:-50}
       MAX_PENDING_PER_IP: ${MAX_PENDING_PER_IP:-3}
+      DOWNLOAD_WORKERS:   ${DOWNLOAD_WORKERS:-2}
     networks:
       - djdarr_net
     restart: unless-stopped

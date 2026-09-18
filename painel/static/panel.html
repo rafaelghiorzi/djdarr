@@ -3,149 +3,276 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Painel do DJ 🎧</title>
+  <meta name="theme-color" content="#0a0a0c" />
+  <title>Painel do DJ</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg: #0d0d0f;
-      --surface: #18181c;
-      --surface2: #111116;
-      --border: #2a2a32;
-      --text: #e8e8e8;
-      --muted: #777;
-      --accent: #6c63ff;
-      --green: #4ade80;
+      --bg: #0a0a0c;
+      --surface: #131316;
+      --surface-2: #1a1a1f;
+      --border: #232328;
+      --text: #edecf1;
+      --muted: #8b8a96;
+      --muted-2: #55545e;
+      --accent: #6d5efc;
+      --accent-soft: rgba(109, 94, 252, 0.14);
+      --green: #34d399;
+      --green-soft: rgba(52, 211, 153, 0.12);
       --red: #f87171;
-      --yellow: #fbbf24;
+      --red-soft: rgba(248, 113, 113, 0.12);
+      --amber: #fbbf24;
+      --amber-soft: rgba(251, 191, 36, 0.12);
+      --radius: 12px;
     }
+
+    html { color-scheme: dark; }
 
     body {
       background: var(--bg);
       color: var(--text);
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       min-height: 100dvh;
-      padding: 1.5rem 1rem 4rem;
+      -webkit-font-smoothing: antialiased;
     }
 
-    header {
-      max-width: 1100px;
-      margin: 0 auto 1.5rem;
+    a { color: inherit; }
+
+    .shell {
+      max-width: 1320px;
+      margin: 0 auto;
+      padding: 1.5rem 1.75rem 4rem;
+    }
+
+    /* ── Topbar ──────────────────────────────────────────────────────── */
+    header.topbar {
       display: flex;
       align-items: center;
       justify-content: space-between;
+      gap: 1rem;
       flex-wrap: wrap;
-      gap: .75rem;
+      padding-bottom: 1.25rem;
+      margin-bottom: 1.5rem;
+      border-bottom: 1px solid var(--border);
     }
-    header h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -.01em; }
-    .status-bar { display: flex; align-items: center; gap: .9rem; font-size: .82rem; color: var(--muted); }
-    .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--green); display: inline-block; margin-right: .35rem; }
-    .dot.off { background: var(--red); }
+    .brand { display: flex; align-items: center; gap: .6rem; }
+    .brand .mark {
+      width: 34px; height: 34px; border-radius: 9px;
+      background: linear-gradient(135deg, var(--accent), #a78bfa);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.05rem;
+    }
+    .brand h1 { font-size: 1.15rem; font-weight: 700; letter-spacing: -.01em; }
+    .brand .sub { font-size: .74rem; color: var(--muted); font-weight: 500; }
 
-    .grid {
-      max-width: 1100px;
-      margin: 0 auto;
-      display: grid;
-      grid-template-columns: 1fr 1fr;
+    .conn { display: flex; align-items: center; gap: .5rem; font-size: .8rem; color: var(--muted); }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 8px var(--green); }
+    .dot.off { background: var(--red); box-shadow: 0 0 8px var(--red); }
+
+    label.auto-toggle { display: flex; align-items: center; gap: .4rem; font-size: .8rem; color: var(--muted); cursor: pointer; }
+
+    /* ── Painel do daemon ───────────────────────────────────────────── */
+    .daemon-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
       gap: 1.5rem;
+      flex-wrap: wrap;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.1rem 1.4rem;
+      margin-bottom: 1.75rem;
     }
-    @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+    .daemon-left { display: flex; align-items: center; gap: 1rem; }
+
+    .switch {
+      position: relative; width: 46px; height: 26px; flex-shrink: 0;
+      border-radius: 999px; border: none; cursor: pointer;
+      background: var(--surface-2); border: 1px solid var(--border);
+      transition: background .18s, border-color .18s;
+    }
+    .switch::after {
+      content: ""; position: absolute; top: 2px; left: 2px;
+      width: 20px; height: 20px; border-radius: 50%;
+      background: var(--muted-2);
+      transition: transform .18s, background .18s;
+    }
+    .switch.on { background: var(--green-soft); border-color: rgba(52,211,153,.4); }
+    .switch.on::after { transform: translateX(20px); background: var(--green); box-shadow: 0 0 8px var(--green); }
+    .switch:disabled { opacity: .55; cursor: wait; }
+
+    .daemon-label { display: flex; flex-direction: column; gap: .15rem; }
+    .daemon-label .title { font-size: .92rem; font-weight: 700; }
+    .daemon-label .desc { font-size: .78rem; color: var(--muted); }
+
+    .daemon-stats { display: flex; align-items: center; gap: 1.6rem; }
+    .stat { text-align: right; }
+    .stat .n { font-size: 1.25rem; font-weight: 800; line-height: 1; }
+    .stat .l { font-size: .68rem; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-top: .3rem; }
+
+    .active-pill {
+      display: inline-flex; align-items: center; gap: .35rem;
+      background: var(--accent-soft); color: #b8adff;
+      border-radius: 999px; padding: .2rem .6rem; font-size: .74rem; font-weight: 600;
+      margin-left: .3rem;
+    }
+
+    /* ── Grid de colunas ─────────────────────────────────────────────── */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.25rem;
+      align-items: start;
+    }
+    @media (max-width: 1080px) { .grid { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 720px)  { .grid { grid-template-columns: 1fr; } .shell { padding: 1.1rem 1rem 3rem; } }
 
     .col h2 {
-      font-size: 1rem;
-      font-weight: 600;
-      margin-bottom: .9rem;
-      padding-bottom: .5rem;
+      display: flex; align-items: center; gap: .5rem;
+      font-size: .82rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+      color: var(--muted);
+      margin-bottom: .8rem;
+      padding-bottom: .7rem;
       border-bottom: 1px solid var(--border);
     }
     .count {
-      background: var(--surface);
-      border: 1px solid var(--border);
+      background: var(--surface-2);
       border-radius: 999px;
-      padding: .05rem .55rem;
-      font-size: .78rem;
-      color: var(--muted);
-      margin-left: .4rem;
+      padding: .05rem .5rem;
+      font-size: .74rem;
+      color: var(--text);
+      font-weight: 700;
     }
 
-    .empty { color: var(--muted); font-size: .88rem; padding: 1.2rem .2rem; }
+    .empty {
+      color: var(--muted-2);
+      font-size: .84rem;
+      padding: 1.6rem .2rem;
+      text-align: center;
+      border: 1px dashed var(--border);
+      border-radius: var(--radius);
+    }
 
     .card {
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: .8rem;
-      padding: .9rem 1rem;
-      margin-bottom: .8rem;
+      border-radius: var(--radius);
+      padding: .85rem .95rem;
+      margin-bottom: .65rem;
+      display: flex;
+      gap: .75rem;
     }
-    .card .title { font-size: .95rem; font-weight: 500; word-break: break-word; line-height: 1.4; }
-    .card .meta { color: var(--muted); font-size: .76rem; margin-top: .35rem; }
+    .card .thumb {
+      width: 46px; height: 46px; border-radius: 8px; flex-shrink: 0;
+      object-fit: cover; background: var(--surface-2);
+      border: 1px solid var(--border);
+    }
+    .card .body { min-width: 0; flex: 1; }
+    .card .title { font-size: .89rem; font-weight: 600; line-height: 1.4; word-break: break-word; }
+    .card .artist { font-size: .78rem; color: var(--muted); margin-top: .1rem; }
+    .card .meta { color: var(--muted-2); font-size: .72rem; margin-top: .4rem; }
     .card .path {
-      color: #6b7280; font-size: .72rem; margin-top: .35rem;
+      color: var(--muted-2); font-size: .7rem; margin-top: .4rem;
       font-family: ui-monospace, SFMono-Regular, Menlo, monospace; word-break: break-all;
     }
 
     .badge {
-      display: inline-block; font-size: .72rem; font-weight: 600;
-      padding: .12rem .5rem; border-radius: 999px; margin-right: .4rem;
+      display: inline-flex; align-items: center; gap: .3rem;
+      font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
+      padding: .18rem .5rem; border-radius: 999px;
     }
-    .badge.approved    { background: #2a2440; color: #b9aaff; }
-    .badge.downloading { background: #2a2440; color: #b9aaff; }
-    .badge.ready       { background: #0a2e18; color: var(--green); }
-    .badge.failed      { background: #2d0a0a; color: var(--red); }
+    .badge.approved    { background: var(--surface-2); color: var(--muted); }
+    .badge.downloading { background: var(--accent-soft); color: #b8adff; }
+    .badge.ready       { background: var(--green-soft); color: var(--green); }
+    .badge.failed      { background: var(--red-soft); color: var(--red); }
 
     .err {
-      background: #2d0a0a; color: var(--red); border: 1px solid #6b1414;
-      border-radius: .5rem; padding: .5rem .7rem; font-size: .8rem; margin-top: .6rem; line-height: 1.4;
+      background: var(--red-soft); color: var(--red);
+      border-radius: 8px; padding: .5rem .65rem; font-size: .76rem; margin-top: .55rem; line-height: 1.4;
     }
 
-    .actions { display: flex; gap: .5rem; margin-top: .8rem; }
-    button {
-      flex: 1; cursor: pointer; border: none; border-radius: .55rem;
-      font-size: .85rem; font-weight: 600; padding: .55rem .6rem;
+    .actions { display: flex; gap: .4rem; margin-top: .7rem; }
+    button.act {
+      cursor: pointer; border: none; border-radius: 7px;
+      font-size: .78rem; font-weight: 600; padding: .45rem .55rem;
       transition: filter .15s, opacity .15s; color: #fff;
+      font-family: inherit;
     }
-    button:hover:not(:disabled) { filter: brightness(1.12); }
-    button:disabled { opacity: .5; cursor: not-allowed; }
-    .btn-approve { background: var(--accent); }
-    .btn-reject  { background: #3a2326; color: #f3b0b0; }
-    .btn-played  { background: #1f6f43; }
-    .btn-retry   { background: var(--accent); }
-    .btn-ghost   { background: #26262e; color: #c8c8d0; }
+    button.act:hover:not(:disabled) { filter: brightness(1.15); }
+    button.act:disabled { opacity: .5; cursor: not-allowed; }
+    .btn-approve { background: var(--accent); flex: 1; }
+    .btn-reject  { background: var(--surface-2); color: #f3b0b0; flex: 1; }
+    .btn-played  { background: var(--green); color: #06281a; flex: 1; }
+    .btn-retry   { background: var(--accent); flex: 1; }
+    .btn-ghost   { background: var(--surface-2); color: var(--muted); flex: 1; }
 
     .spin {
-      display: inline-block; width: 11px; height: 11px; margin-right: .3rem;
-      border: 2px solid rgba(185,170,255,.35); border-top-color: #b9aaff;
+      display: inline-block; width: 10px; height: 10px;
+      border: 2px solid rgba(184,173,255,.35); border-top-color: #b8adff;
       border-radius: 50%; animation: spin .8s linear infinite; vertical-align: -1px;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
-  <header>
-    <h1>🎧 Painel do DJ</h1>
-    <div class="status-bar">
-      <span><span id="dot" class="dot"></span><span id="conn">conectado</span></span>
-      <label style="cursor:pointer;">
-        <input type="checkbox" id="auto" checked style="vertical-align:-1px;" />
-        auto-atualizar
-      </label>
-    </div>
-  </header>
+  <div class="shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="mark">🎧</div>
+        <div>
+          <h1>Painel do DJ</h1>
+          <div class="sub">Fila de pedidos &amp; downloads</div>
+        </div>
+      </div>
+      <div style="display:flex; align-items:center; gap:1.1rem;">
+        <span class="conn"><span id="dot" class="dot"></span><span id="conn-text">conectado</span></span>
+        <label class="auto-toggle">
+          <input type="checkbox" id="auto" checked />
+          auto-atualizar
+        </label>
+      </div>
+    </header>
 
-  <div class="grid">
-    <section class="col">
-      <h2>⏳ Pendentes <span id="count-pending" class="count">0</span></h2>
-      <div id="pending"></div>
+    <section class="daemon-bar">
+      <div class="daemon-left">
+        <button id="daemon-switch" class="switch" title="Ligar/desligar daemon de downloads"></button>
+        <div class="daemon-label">
+          <div class="title" id="daemon-title">Daemon de downloads — carregando…</div>
+          <div class="desc" id="daemon-desc">Verificando estado…</div>
+        </div>
+      </div>
+      <div class="daemon-stats">
+        <div class="stat"><div class="n" id="stat-workers">–</div><div class="l">Workers</div></div>
+        <div class="stat"><div class="n" id="stat-active">–</div><div class="l">Baixando</div></div>
+        <div class="stat"><div class="n" id="stat-queue">–</div><div class="l">Na fila</div></div>
+      </div>
     </section>
-    <section class="col">
-      <h2>✅ Aprovadas <span id="count-approved" class="count">0</span></h2>
-      <div id="approved"></div>
-    </section>
+
+    <div class="grid">
+      <section class="col">
+        <h2>⏳ Pendentes <span id="count-pending" class="count">0</span></h2>
+        <div id="pending"></div>
+      </section>
+      <section class="col">
+        <h2>⬇️ Fila &amp; baixando <span id="count-queue" class="count">0</span></h2>
+        <div id="queue"></div>
+      </section>
+      <section class="col">
+        <h2>✅ Prontas &amp; falhas <span id="count-done" class="count">0</span></h2>
+        <div id="done"></div>
+      </section>
+    </div>
   </div>
 
   <script>
     var REFRESH_MS = 3000;
     var busy = {};   // ids com ação em andamento (evita clique duplo)
+    var daemonBusy = false;
 
     function esc(s) {
       return String(s == null ? '' : s)
@@ -184,20 +311,28 @@
     function pendingCard(it) {
       return '' +
         '<div class="card">' +
-          '<div class="title">' + esc(it.query) + '</div>' +
-          '<div class="meta">#' + it.id + ' · ' + fmtTime(it.submitted_at) +
-            ' · IP ' + esc(it.submitter_ip || '—') + '</div>' +
-          '<div class="actions">' +
-            '<button class="btn-approve" onclick="action(\'POST\',\'/api/approve/' + it.id + '\',' + it.id + ')">✅ Aprovar</button>' +
-            '<button class="btn-reject" onclick="action(\'POST\',\'/api/reject/' + it.id + '\',' + it.id + ')">❌ Reprovar</button>' +
+          '<div class="body">' +
+            '<div class="title">' + esc(it.query) + '</div>' +
+            '<div class="meta">#' + it.id + ' · ' + fmtTime(it.submitted_at) +
+              ' · IP ' + esc(it.submitter_ip || '—') + '</div>' +
+            '<div class="actions">' +
+              '<button class="act btn-approve" onclick="action(\'POST\',\'/api/approve/' + it.id + '\',' + it.id + ')">Aprovar</button>' +
+              '<button class="act btn-reject" onclick="action(\'POST\',\'/api/reject/' + it.id + '\',' + it.id + ')">Reprovar</button>' +
+            '</div>' +
           '</div>' +
         '</div>';
     }
 
     var LABEL = { approved:'Na fila', downloading:'Baixando…', ready:'Pronto', failed:'Falhou' };
 
+    function thumbTag(it) {
+      return it.thumbnail_path
+        ? '<img class="thumb" src="/api/thumb/' + it.id + '" alt="" loading="lazy" />'
+        : '<div class="thumb"></div>';
+    }
+
     function approvedCard(it) {
-      var title = it.matched_title || it.query;
+      var displayTitle = it.title || it.matched_title || it.query;
       var badge = it.status === 'downloading'
         ? '<span class="badge downloading"><span class="spin"></span>' + LABEL[it.status] + '</span>'
         : '<span class="badge ' + it.status + '">' + (LABEL[it.status] || it.status) + '</span>';
@@ -207,52 +342,96 @@
       if (it.retry_count) meta.push('tentativa #' + (it.retry_count + 1));
       meta.push('#' + it.id);
 
-      var html = '<div class="card">' +
-        '<div class="title">' + badge + esc(title) + '</div>' +
-        '<div class="meta">' + meta.join(' · ') + '</div>';
+      var html = '<div class="card">' + thumbTag(it) +
+        '<div class="body">' +
+        '<div class="title">' + badge + ' ' + esc(displayTitle) + '</div>';
+
+      if (it.artist) html += '<div class="artist">' + esc(it.artist) + '</div>';
+      html += '<div class="meta">' + meta.join(' · ') + '</div>';
 
       if (it.status === 'ready' && it.file_path)
-        html += '<div class="path">📁 ' + esc(it.file_path) + '</div>';
+        html += '<div class="path">' + esc(it.file_path) + '</div>';
       if (it.error_message)
-        html += '<div class="err">🚨 ' + esc(it.error_message) + '</div>';
+        html += '<div class="err">' + esc(it.error_message) + '</div>';
 
       if (it.status === 'ready') {
         html += '<div class="actions">' +
-          '<button class="btn-played" onclick="action(\'POST\',\'/api/played/' + it.id + '\',' + it.id + ')">🎵 Tocado</button>' +
+          '<button class="act btn-played" onclick="action(\'POST\',\'/api/played/' + it.id + '\',' + it.id + ')">Tocado</button>' +
           '</div>';
       } else if (it.status === 'failed') {
         html += '<div class="actions">' +
-          '<button class="btn-retry" onclick="action(\'POST\',\'/api/retry/' + it.id + '\',' + it.id + ')">🔄 Re-tentar</button>' +
-          '<button class="btn-ghost" onclick="action(\'POST\',\'/api/played/' + it.id + '\',' + it.id + ')">Dispensar</button>' +
+          '<button class="act btn-retry" onclick="action(\'POST\',\'/api/retry/' + it.id + '\',' + it.id + ')">Re-tentar</button>' +
+          '<button class="act btn-ghost" onclick="action(\'POST\',\'/api/played/' + it.id + '\',' + it.id + ')">Dispensar</button>' +
           '</div>';
       }
-      html += '</div>';
+      html += '</div></div>';
       return html;
     }
 
     function setConn(ok) {
       document.getElementById('dot').className = 'dot' + (ok ? '' : ' off');
-      document.getElementById('conn').textContent = ok ? 'conectado' : 'sem conexão';
+      document.getElementById('conn-text').textContent = ok ? 'conectado' : 'sem conexão';
     }
+
+    function renderDaemon(status) {
+      var sw = document.getElementById('daemon-switch');
+      sw.className = 'switch' + (status.enabled ? ' on' : '');
+      sw.disabled = daemonBusy;
+
+      document.getElementById('daemon-title').textContent =
+        'Daemon de downloads — ' + (status.enabled ? 'ligado' : 'desligado');
+      document.getElementById('daemon-desc').textContent = status.enabled
+        ? 'Puxando pedidos aprovados automaticamente.'
+        : 'Pedidos aprovados ficam represados até você ligar.';
+
+      document.getElementById('stat-workers').textContent = status.worker_count;
+      document.getElementById('stat-active').textContent = status.active.length;
+      document.getElementById('stat-queue').textContent = status.queue_size;
+    }
+
+    document.getElementById('daemon-switch').addEventListener('click', async function() {
+      if (daemonBusy) return;
+      var willEnable = !this.classList.contains('on');
+      daemonBusy = true;
+      this.disabled = true;
+      try {
+        await api('POST', willEnable ? '/api/worker/enable' : '/api/worker/disable');
+      } catch (e) {
+        alert('Falhou: ' + e.message);
+      } finally {
+        daemonBusy = false;
+        await refresh();
+      }
+    });
 
     async function refresh() {
       try {
-        var [pending, approved] = await Promise.all([
+        var [pending, approved, worker] = await Promise.all([
           api('GET', '/api/pending'),
           api('GET', '/api/approved'),
+          api('GET', '/api/worker/status'),
         ]);
         setConn(true);
+        renderDaemon(worker);
+
+        var queueItems = approved.filter(function(it) { return it.status === 'approved' || it.status === 'downloading'; });
+        var doneItems  = approved.filter(function(it) { return it.status === 'ready' || it.status === 'failed'; });
 
         document.getElementById('count-pending').textContent = pending.length;
-        document.getElementById('count-approved').textContent = approved.length;
+        document.getElementById('count-queue').textContent = queueItems.length;
+        document.getElementById('count-done').textContent = doneItems.length;
 
         document.getElementById('pending').innerHTML = pending.length
           ? pending.map(pendingCard).join('')
           : '<div class="empty">Nenhum pedido aguardando.</div>';
 
-        document.getElementById('approved').innerHTML = approved.length
-          ? approved.map(approvedCard).join('')
-          : '<div class="empty">Nenhum download em andamento ou concluído.</div>';
+        document.getElementById('queue').innerHTML = queueItems.length
+          ? queueItems.map(approvedCard).join('')
+          : '<div class="empty">Fila vazia.</div>';
+
+        document.getElementById('done').innerHTML = doneItems.length
+          ? doneItems.map(approvedCard).join('')
+          : '<div class="empty">Nada pronto ainda.</div>';
       } catch (e) {
         setConn(false);
       }

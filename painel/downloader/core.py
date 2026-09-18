@@ -29,6 +29,13 @@ import yt_dlp
 from rapidfuzz import fuzz
 from yt_dlp.postprocessor.metadataparser import MetadataParserPP
 
+try:
+    from mutagen.id3 import ID3, ID3NoHeaderError, TIT2, TPE1, APIC
+    from mutagen.mp3 import MP3
+    _MUTAGEN_OK = True
+except ImportError:  # pragma: no cover - mutagen é uma dependência obrigatória, mas degrada bem
+    _MUTAGEN_OK = False
+
 logger = logging.getLogger("setlist.downloader")
 
 # Cache de credenciais do SoundCloud (válido por toda a sessão do processo)
@@ -66,6 +73,120 @@ def _similarity(query: str, title: str) -> float:
     token_score = fuzz.token_sort_ratio(q, t)
     partial_score = fuzz.partial_ratio(q, t)
     return (token_score * 0.6) + (partial_score * 0.4)
+
+
+# ─── Nome limpo: "Música - Artista" ──────────────────────────────────────────
+
+_NOISE_WORD = (
+    r"(?:"
+    r"official\s*(?:music\s*)?video|official\s*(?:audio|lyrics?|version)|official|"
+    r"lyric\s*video|lyrics?|visualizer|audio|"
+    r"full\s*(?:song|track|version|album)|"
+    r"remaster(?:ed)?|hd|hq|4k|"
+    r"áudio\s*oficial|clipe\s*oficial|letra"
+    r")"
+)
+# Um grupo de colchetes/parênteses só some se TODO o conteúdo dele for feito
+# de palavras de ruído (ex.: "(4K Remaster)", "(Official Video)") — assim não
+# corta acidentalmente metade de um parêntese e deixa um ")" órfão.
+_BRACKET_NOISE_RE = re.compile(
+    rf"[\(\[]\s*(?:{_NOISE_WORD}[\s\-]*)+[\)\]]", re.IGNORECASE
+)
+_BARE_NOISE_RE = re.compile(rf"\b{_NOISE_WORD}\b", re.IGNORECASE)
+_SPLIT_RE = re.compile(r"\s*[-–—|]\s*")
+
+
+def _strip_noise(text: str) -> str:
+    """Remove marcadores comuns de título de vídeo ("(Official Video)" etc.)."""
+    cleaned = _BRACKET_NOISE_RE.sub("", text or "")
+    cleaned = _BARE_NOISE_RE.sub("", cleaned)
+    cleaned = re.sub(r"[\(\[\{]\s*[\)\]\}]", "", cleaned)  # parênteses vazios remanescentes
+    cleaned = re.sub(r"\s{2,}", " ", cleaned)
+    return cleaned.strip(" \t-–—|.")
+
+
+def clean_track_artist(
+    raw_title: str,
+    uploader: Optional[str] = None,
+    track: Optional[str] = None,
+    artist: Optional[str] = None,
+) -> tuple[str, str]:
+    """
+    Deriva (música, artista) limpos a partir do título bruto do YouTube/SoundCloud.
+
+    Prioridade:
+      1. Metadados explícitos (track/artist) quando a plataforma já os fornece
+         (comum em uploads reconhecidos como música no YouTube).
+      2. Split do título em "Artista - Música" (convenção usada tanto pelo
+         YouTube quanto pela busca do SoundCloud neste projeto) → devolvido
+         como (Música, Artista).
+      3. Título limpo + uploader/canal como artista.
+    """
+    if track and artist:
+        return _strip_noise(track) or "download", _strip_noise(artist)
+
+    title = _strip_noise(raw_title)
+    parts = _SPLIT_RE.split(title, maxsplit=1)
+    if len(parts) == 2 and parts[0].strip() and parts[1].strip():
+        left, right = parts[0].strip(), parts[1].strip()
+        return right, left
+
+    if uploader:
+        return (title or "download"), _strip_noise(uploader)
+
+    return (title or "download"), ""
+
+
+def build_display_name(title: str, artist: str) -> str:
+    """Nome de exibição/arquivo no formato 'Música - Artista'."""
+    title = (title or "download").strip()
+    artist = (artist or "").strip()
+    name = f"{title} - {artist}" if artist else title
+    return _sanitize_filename(name)
+
+
+def _upsize_soundcloud_artwork(url: Optional[str]) -> Optional[str]:
+    """SoundCloud serve capas em baixa resolução por padrão (-large.jpg);
+    troca pelo tamanho maior disponível (-t500x500.jpg)."""
+    if not url:
+        return None
+    return re.sub(r"-large\.(jpg|png)$", r"-t500x500.\1", url)
+
+
+def _fetch_thumbnail_bytes(url: Optional[str]) -> Optional[bytes]:
+    if not url:
+        return None
+    try:
+        resp = requests.get(url, timeout=10)
+        resp.raise_for_status()
+        return resp.content
+    except requests.RequestException as e:
+        logger.warning(f"Falha ao baixar capa de {url}: {e}")
+        return None
+
+
+def _tag_mp3(path: Path, title: str, artist: str, thumbnail_bytes: Optional[bytes]) -> None:
+    """Grava título/artista e capa embutida (ID3 APIC) no MP3 final."""
+    if not _MUTAGEN_OK:
+        logger.warning("mutagen não disponível — pulando tags/capa do MP3.")
+        return
+    try:
+        try:
+            tags = ID3(str(path))
+        except ID3NoHeaderError:
+            tags = ID3()
+
+        tags.setall("TIT2", [TIT2(encoding=3, text=title)])
+        if artist:
+            tags.setall("TPE1", [TPE1(encoding=3, text=artist)])
+        if thumbnail_bytes:
+            tags.setall("APIC", [APIC(
+                encoding=3, mime="image/jpeg", type=3,
+                desc="Cover", data=thumbnail_bytes,
+            )])
+        tags.save(str(path), v2_version=3)
+    except Exception as e:
+        logger.warning(f"Falha ao gravar tags/capa em {path}: {e}")
 
 
 # ─── SoundCloud: extração de credenciais de sessão ──────────────────────────
@@ -264,6 +385,9 @@ def _search_soundcloud(query: str) -> Optional[dict]:
         title = first.get("title", "")
         artist = first.get("user", {}).get("username", "")
         full_title = f"{artist} - {title}" if artist else title
+        artwork = _upsize_soundcloud_artwork(
+            first.get("artwork_url") or first.get("user", {}).get("avatar_url")
+        )
 
         logger.info(f"[SOUNDCLOUD] Resultado #1: '{full_title}' → {track_url}")
 
@@ -276,6 +400,8 @@ def _search_soundcloud(query: str) -> Optional[dict]:
         return {
             "url": track_url,
             "title": full_title,
+            "uploader": artist,
+            "thumbnail": artwork,
             "source": "soundcloud",
         }
 
@@ -313,9 +439,13 @@ def _search_youtube(query: str) -> Optional[dict]:
                 return None
 
             first = entries[0]
+            thumbs = first.get("thumbnails") or []
+            thumbnail = thumbs[-1]["url"] if thumbs else first.get("thumbnail")
             result = {
                 "url": first.get("url") or first.get("webpage_url"),
                 "title": first.get("title", ""),
+                "uploader": first.get("uploader") or first.get("channel") or "",
+                "thumbnail": thumbnail,
                 "source": "youtube",
             }
             logger.info(f"[YOUTUBE] Encontrado: '{result['title']}' → {result['url']}")
@@ -329,26 +459,27 @@ def _search_youtube(query: str) -> Optional[dict]:
         return None
 
 
-def _extract_title(url: str) -> Optional[str]:
+def _extract_info_meta(url: str) -> dict:
     """
-    Extrai o título de uma URL direta (sem baixar) via yt-dlp.
-
-    Para YouTube/SoundCloud o título já costuma vir como "Artista - Música"
-    ou o nome da faixa — usamos esse texto como nome do arquivo final.
+    Extrai metadados de uma URL direta (sem baixar) via yt-dlp: título,
+    uploader/canal, capa e, quando disponíveis, os campos track/artist
+    (o YouTube preenche isso para uploads reconhecidos como música).
     """
     try:
         with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True}) as ydl:
             info = ydl.extract_info(url, download=False)
-        title = info.get("title")
-        uploader = info.get("uploader") or info.get("channel")
-        # Se o título não menciona o artista e temos o uploader, prefixa-o
-        # (replica o formato "Artista - Música" da busca por texto).
-        if uploader and title and uploader.lower() not in title.lower():
-            return f"{uploader} - {title}"
-        return title
+        thumbs = info.get("thumbnails") or []
+        thumbnail = thumbs[-1]["url"] if thumbs else info.get("thumbnail")
+        return {
+            "title": info.get("title") or "",
+            "uploader": info.get("uploader") or info.get("channel") or "",
+            "thumbnail": thumbnail,
+            "track": info.get("track"),
+            "artist": info.get("artist") or info.get("creator"),
+        }
     except Exception as e:
-        logger.warning(f"Não foi possível extrair título de {url}: {e}")
-        return None
+        logger.warning(f"Não foi possível extrair metadados de {url}: {e}")
+        return {}
 
 
 def _pick_best_result(query: str, youtube_result: Optional[dict], sc_result: Optional[dict]) -> Optional[dict]:
@@ -384,7 +515,11 @@ def _download_audio(
     audio_format: str = "mp3",
     audio_quality: str = "0",
     progress_hook=None,
-) -> Path:
+    tag_title: Optional[str] = None,
+    tag_artist: Optional[str] = None,
+    thumbnail_url: Optional[str] = None,
+    thumb_dest: Optional[str] = None,
+) -> tuple[Path, Optional[str]]:
     """
     Baixa o áudio de uma URL e salva no caminho especificado.
 
@@ -395,9 +530,12 @@ def _download_audio(
         audio_format: Formato de saída (mp3, wav, etc.)
         audio_quality: Qualidade (0–9 para mp3)
         progress_hook: Callback opcional para progresso (Streamlit)
+        tag_title/tag_artist: valores gravados nas tags ID3 (apenas mp3)
+        thumbnail_url: URL da capa a embutir/salvar
+        thumb_dest: caminho onde salvar uma cópia da capa (para exibição na UI)
 
     Returns:
-        Path do arquivo salvo.
+        (Path do arquivo salvo, caminho da capa salva ou None)
     """
     dest = Path(dest_folder)
     dest.mkdir(parents=True, exist_ok=True)
@@ -429,7 +567,21 @@ def _download_audio(
 
         final_path = dest / f"{safe_name}.{audio_format}"
         logger.info(f"Download concluído: {final_path}")
-        return final_path
+
+        thumb_bytes = _fetch_thumbnail_bytes(thumbnail_url)
+        saved_thumb_path = None
+        if thumb_bytes and thumb_dest:
+            try:
+                Path(thumb_dest).parent.mkdir(parents=True, exist_ok=True)
+                Path(thumb_dest).write_bytes(thumb_bytes)
+                saved_thumb_path = thumb_dest
+            except OSError as e:
+                logger.warning(f"Falha ao salvar capa em {thumb_dest}: {e}")
+
+        if audio_format == "mp3":
+            _tag_mp3(final_path, tag_title or safe_name, tag_artist or "", thumb_bytes)
+
+        return final_path, saved_thumb_path
 
     except yt_dlp.utils.DownloadError as e:
         logger.error(f"Erro no download: {e}")
@@ -448,45 +600,72 @@ def download_track(
     audio_format: str = "mp3",
     audio_quality: str = "0",
     progress_hook=None,
+    thumb_dest: Optional[str] = None,
 ) -> dict:
     """
-    Função principal chamada pelo frontend.
+    Função principal chamada pelo worker.
 
     Fluxo:
       1. Se query for URL → baixa diretamente
       2. Se for texto → busca no YouTube + SoundCloud → escolhe melhor → baixa
+
+    Em ambos os casos o nome final do arquivo (e as tags ID3, se mp3) seguem
+    o formato "Música - Artista", derivado via clean_track_artist().
 
     Returns:
         {
           "success": bool,
           "path": str | None,
           "source": str,
-          "matched_title": str,
+          "matched_title": str,   # "Música - Artista" (nome de exibição)
+          "title": str,
+          "artist": str,
+          "thumbnail_path": str | None,
           "score": float | None,
           "error": str | None
         }
     """
     logger.info(f"=== Iniciando download | query='{query}' | destino='{dest_folder}' | arquivo='{filename}' ===")
 
+    def _fail(error: str) -> dict:
+        return {
+            "success": False, "path": None, "source": "unknown",
+            "matched_title": "", "title": "", "artist": "",
+            "thumbnail_path": None, "score": None, "error": error,
+        }
+
     try:
         # ── Caso 1: Link direto ──────────────────────────────────────────
         if _is_url(query):
             logger.info("Entrada detectada como URL direta.")
-            # Usa o título real da faixa como nome do arquivo (artista - música).
-            track_title = filename or _extract_title(query) or "download"
-            path = _download_audio(
+            meta = _extract_info_meta(query)
+            clean_title, clean_artist = clean_track_artist(
+                meta.get("title", ""),
+                uploader=meta.get("uploader"),
+                track=meta.get("track"),
+                artist=meta.get("artist"),
+            )
+            display_name = filename or build_display_name(clean_title, clean_artist)
+            path, thumb_path = _download_audio(
                 url=query,
                 dest_folder=dest_folder,
-                filename=track_title,
+                filename=display_name,
                 audio_format=audio_format,
                 audio_quality=audio_quality,
                 progress_hook=progress_hook,
+                tag_title=clean_title,
+                tag_artist=clean_artist,
+                thumbnail_url=meta.get("thumbnail"),
+                thumb_dest=thumb_dest,
             )
             return {
                 "success": True,
                 "path": str(path),
                 "source": "direct_link",
-                "matched_title": track_title,
+                "matched_title": display_name,
+                "title": clean_title,
+                "artist": clean_artist,
+                "thumbnail_path": thumb_path,
                 "score": None,
                 "error": None,
             }
@@ -499,55 +678,43 @@ def download_track(
 
         best = _pick_best_result(query, yt_result, sc_result)
         if not best:
-            return {
-                "success": False,
-                "path": None,
-                "source": "none",
-                "matched_title": "",
-                "score": None,
-                "error": "Nenhum resultado encontrado no YouTube ou SoundCloud.",
-            }
+            return _fail("Nenhum resultado encontrado no YouTube ou SoundCloud.")
 
         score = _similarity(query, best["title"])
-        # Nome do arquivo = título do melhor resultado (já vem como "artista - música").
-        path = _download_audio(
+        clean_title, clean_artist = clean_track_artist(best["title"], uploader=best.get("uploader"))
+        display_name = filename or build_display_name(clean_title, clean_artist)
+
+        path, thumb_path = _download_audio(
             url=best["url"],
             dest_folder=dest_folder,
-            filename=filename or best["title"],
+            filename=display_name,
             audio_format=audio_format,
             audio_quality=audio_quality,
             progress_hook=progress_hook,
+            tag_title=clean_title,
+            tag_artist=clean_artist,
+            thumbnail_url=best.get("thumbnail"),
+            thumb_dest=thumb_dest,
         )
 
         return {
             "success": True,
             "path": str(path),
             "source": best["source"],
-            "matched_title": best["title"],
+            "matched_title": display_name,
+            "title": clean_title,
+            "artist": clean_artist,
+            "thumbnail_path": thumb_path,
             "score": round(score, 1),
             "error": None,
         }
 
     except RuntimeError as e:
         logger.error(f"Erro controlado no download_track: {e}")
-        return {
-            "success": False,
-            "path": None,
-            "source": "unknown",
-            "matched_title": "",
-            "score": None,
-            "error": str(e),
-        }
+        return _fail(str(e))
     except Exception as e:
         logger.exception(f"Erro inesperado no download_track: {e}")
-        return {
-            "success": False,
-            "path": None,
-            "source": "unknown",
-            "matched_title": "",
-            "score": None,
-            "error": f"Erro inesperado: {e}",
-        }
+        return _fail(f"Erro inesperado: {e}")
 
 
 # ─── SoundCloud: download de playlist completa ───────────────────────────────

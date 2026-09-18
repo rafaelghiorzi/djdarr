@@ -33,6 +33,10 @@ def get_db():
         conn.close()
 
 
+def _column_exists(conn: sqlite3.Connection, table: str, column: str) -> bool:
+    return any(r[1] == column for r in conn.execute(f"PRAGMA table_info({table})"))
+
+
 def init_db() -> None:
     with get_db() as conn:
         conn.executescript("""
@@ -61,4 +65,33 @@ def init_db() -> None:
                 ON requests(status);
             CREATE INDEX IF NOT EXISTS idx_requests_submitted
                 ON requests(submitted_at);
+
+            CREATE TABLE IF NOT EXISTS settings (
+                key   TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );
         """)
+
+        # Migração incremental: colunas adicionadas depois do schema inicial.
+        for column, decl in (
+            ("title", "TEXT"),
+            ("artist", "TEXT"),
+            ("thumbnail_path", "TEXT"),
+        ):
+            if not _column_exists(conn, "requests", column):
+                conn.execute(f"ALTER TABLE requests ADD COLUMN {column} {decl}")
+
+
+def get_setting(key: str, default: str) -> str:
+    with get_db() as conn:
+        row = conn.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
+    return row["value"] if row else default
+
+
+def set_setting(key: str, value: str) -> None:
+    with get_db() as conn:
+        conn.execute(
+            """INSERT INTO settings (key, value) VALUES (?, ?)
+               ON CONFLICT(key) DO UPDATE SET value=excluded.value""",
+            (key, value),
+        )
