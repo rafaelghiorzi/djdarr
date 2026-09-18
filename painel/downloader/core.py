@@ -36,6 +36,13 @@ try:
 except ImportError:  # pragma: no cover - mutagen é uma dependência obrigatória, mas degrada bem
     _MUTAGEN_OK = False
 
+try:
+    from PIL import Image
+    import io as _io
+    _PIL_OK = True
+except ImportError:  # pragma: no cover
+    _PIL_OK = False
+
 logger = logging.getLogger("setlist.downloader")
 
 # Cache de credenciais do SoundCloud (válido por toda a sessão do processo)
@@ -153,13 +160,36 @@ def _upsize_soundcloud_artwork(url: Optional[str]) -> Optional[str]:
     return re.sub(r"-large\.(jpg|png)$", r"-t500x500.\1", url)
 
 
+def _normalize_to_jpeg(data: bytes) -> Optional[bytes]:
+    """
+    Recodifica os bytes da capa para JPEG de verdade.
+
+    O YouTube costuma servir thumbnails em WEBP e o SoundCloud às vezes em
+    PNG, mas sempre gravamos a tag ID3 como `image/jpeg` — sem essa conversão,
+    o mime declarado não bate com os bytes reais e o Explorer/Finder recusa
+    mostrar a capa (o navegador é mais tolerante e disfarça o problema).
+    """
+    if not _PIL_OK:
+        logger.warning("Pillow não disponível — capa pode não ser exibida no Explorer/Finder.")
+        return data
+    try:
+        img = Image.open(_io.BytesIO(data))
+        img = img.convert("RGB")
+        buf = _io.BytesIO()
+        img.save(buf, format="JPEG", quality=90)
+        return buf.getvalue()
+    except Exception as e:
+        logger.warning(f"Falha ao converter capa para JPEG: {e}")
+        return None
+
+
 def _fetch_thumbnail_bytes(url: Optional[str]) -> Optional[bytes]:
     if not url:
         return None
     try:
         resp = requests.get(url, timeout=10)
         resp.raise_for_status()
-        return resp.content
+        return _normalize_to_jpeg(resp.content)
     except requests.RequestException as e:
         logger.warning(f"Falha ao baixar capa de {url}: {e}")
         return None

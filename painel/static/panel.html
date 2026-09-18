@@ -381,8 +381,8 @@
       document.getElementById('daemon-title').textContent =
         'Daemon de downloads — ' + (status.enabled ? 'ligado' : 'desligado');
       document.getElementById('daemon-desc').textContent = status.enabled
-        ? 'Puxando pedidos aprovados automaticamente.'
-        : 'Pedidos aprovados ficam represados até você ligar.';
+        ? 'Aprovando e baixando todo pedido automaticamente — sem curadoria.'
+        : 'Pedidos ficam em Pendentes até você aprovar manualmente.';
 
       document.getElementById('stat-workers').textContent = status.worker_count;
       document.getElementById('stat-active').textContent = status.active.length;

@@ -2,6 +2,7 @@ import logging
 import os
 import queue
 import threading
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -14,6 +15,7 @@ _DOWNLOADS_PATH = os.environ.get("DOWNLOADS_PATH", "/downloads")
 _AUDIO_FORMAT = os.environ.get("AUDIO_FORMAT", "mp3")
 _THUMBS_PATH = os.environ.get("THUMBS_PATH", "/data/thumbs")
 _WORKER_COUNT = max(1, min(3, int(os.environ.get("DOWNLOAD_WORKERS", "2"))))
+_AUTO_APPROVE_POLL_SECONDS = 2
 
 _queue: "queue.Queue[int]" = queue.Queue()
 _enabled_event = threading.Event()
@@ -61,6 +63,44 @@ def set_enabled(enabled: bool) -> None:
 
 def _utcnow() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _auto_approve_pending() -> list[int]:
+    """Aprova automaticamente todo pedido pendente (mesma transição que o
+    botão "Aprovar" do painel) e devolve os ids recém-aprovados. Só é chamado
+    enquanto o daemon está ligado — com o daemon desligado, pedidos continuam
+    exigindo aprovação manual no painel."""
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT id FROM requests WHERE status='pending' ORDER BY submitted_at ASC"
+        ).fetchall()
+        ids = [r["id"] for r in rows]
+        if ids:
+            placeholders = ",".join("?" * len(ids))
+            conn.execute(
+                f"""UPDATE requests
+                       SET status='approved',
+                           approved_at=strftime('%Y-%m-%dT%H:%M:%SZ','now')
+                     WHERE status='pending' AND id IN ({placeholders})""",
+                ids,
+            )
+    return ids
+
+
+def _autopromote_loop() -> None:
+    """Enquanto o daemon está ligado, promove pedidos pendentes a aprovados
+    (e os enfileira) sem depender de clique no painel — internal:8001 (onde o
+    pedido do fã é inserido) roda num processo separado de api:8501 (onde
+    este worker vive), então o banco é o único jeito de coordenar os dois."""
+    logger.info("Auto-approve loop started.")
+    while True:
+        _enabled_event.wait()
+        try:
+            for rid in _auto_approve_pending():
+                enqueue(rid)
+        except Exception:
+            logger.exception("Erro no auto-approve do daemon.")
+        time.sleep(_AUTO_APPROVE_POLL_SECONDS)
 
 
 def _process(request_id: int) -> None:
@@ -179,3 +219,5 @@ def start_worker() -> None:
             name=f"download-worker-{i + 1}",
         )
         t.start()
+
+    threading.Thread(target=_autopromote_loop, daemon=True, name="auto-approve").start()
